@@ -12,14 +12,31 @@
         width: 100%;
         height: 100%;
         display: flex;
-        flex-direction: column;
+        flex-direction: row;
         align-items: center;
         justify-content: center;
       }
     </style>
   </head>
   <body>
-    <div id='plot' width="100%" height="100%"></div>
-    <script src="index_test.js" type="module"></script>
+    <div id='plot' width="80%" height="100%"></div>
+    <script src="index.js" type="module"></script>
+    <form>
+      <h4>Method</h4>
+      <input type="radio" id="Beamform" name="method" value="Beamform">
+      <label for="beamform">Beamform</label><br>
+      <input type="radio" id="Capon" name="method" value="Capon">
+      <label for="capon">Capon</label><br>
+      <h4>Disturbance</h4>
+      <input type="checkbox" id="Coherent" name="noise" value="coh">
+      <label for="Coherent">Coherent</label><br>
+      <br>
+      <label>Array Perturbation</label><br>
+      <input type="text" id="Pert" name="noise" value=0.0><Br>
+      <br>
+      <label>Amplitude (1-50)</label><br>
+      <input type="range" id="amp" name="amp" min=1 max=50> 
+    </form>
+
   </body>
 </html>

@@ -25,6 +25,9 @@ impl ULA {
             d,
         }
     }
+    pub fn n_sensor(&self) -> usize {
+        self.n_sensor
+    }
 }
 #[wasm_bindgen(getter_with_clone)]
 pub struct Signal {
@@ -60,23 +63,12 @@ impl Signal {
         })  
     }
 
-    pub fn with_data(mut self, data: &DMatrix<Complex64>) -> Self {
-        self.data = data.clone();
-        self
-    }
+
 
     pub fn get_data(&self) -> &DMatrix<Complex64> {
         &self.data
     }
-    pub fn with_pert(mut self, pert: f64) -> Self {
-        self.pert = pert;
-        self
-    }
 
-    pub fn with_coh(mut self, coh: bool) -> Self {
-        self.coh = coh;
-        self
-    }
 
     fn mut_amp(&mut self) -> &mut DVector<f64> {
         &mut self.amp
@@ -85,7 +77,10 @@ impl Signal {
     fn mut_doA(&mut self) -> &mut DVector<f64> {
         &mut self.doA
     }
-
+    pub fn with_data(mut self, data: &DMatrix<Complex64>) -> Self {
+        self.data = data.clone();
+        self
+    }
 
 
 }
@@ -105,6 +100,24 @@ impl Signal {
 
         }
         
+    }
+
+    pub fn with_pert(mut self, pert: f64) -> Self {
+        self.pert = pert;
+        self
+    }
+
+    pub fn with_coh(mut self, coh: bool) -> Self {
+        self.coh = coh;
+        self
+    }
+
+    pub fn set_coh(&mut self, coh: bool) {
+        self.coh = coh;
+    }
+
+    pub fn set_pert(&mut self, pert: f64) {
+        self.pert = pert;
     }
 
     pub fn add_source(&mut self, amp: f64, doa: f64) {
@@ -143,7 +156,7 @@ impl Signal {
                 self.data.gemm(alpha, &A, &nn, Complex64::new(1.0, 0.0));
                
             } else {
-                let n = Signal::generate_gaussian_matrix(m, N).scale(2.0);
+                let n = Signal::generate_gaussian_matrix(m, N).scale(5.0);
                 let mut sig = DMatrix::<Complex64>::zeros(m,N);
                 sig.gemm(alpha, &A, &nn, Complex64::new(1.0, 0.0));
                 sig = sig+n;
@@ -155,6 +168,14 @@ impl Signal {
 
         
     }
+
+    pub fn n_sensor(&self) -> usize {
+        self.ula.n_sensor()
+    }
+    pub fn n_sources(&self) -> usize {
+        self.n_sources
+    }
+
     pub fn with_random_signal(mut self) -> Signal {
         let m: usize = self.ula.n_sensor;
         let N: usize = self.samples;
@@ -195,6 +216,14 @@ impl Signal {
            Vec::new()
         }
     }
+
+    pub fn capon(&self, L: usize) -> Vec<f64> {
+        if !self.data.is_empty() {
+            return super::capon(&self.data, L, self.ula.d)
+        } else {
+            Vec::new()
+        }
+    }
 }
 
 
@@ -216,6 +245,26 @@ pub fn beamform(Y: &DMatrix<Complex64>, L: usize, d: f64) -> Vec<f64> {
     return phi.as_slice().to_vec();
 
     //let R = Y.gemm_ad(alpha, &Y, &Y, num::zero());
+}
+
+pub fn capon(Y: &DMatrix<Complex64>, L: usize, d: f64) -> Vec<f64> {
+    let m: usize = Y.nrows();
+    let N: usize = Y.ncols();
+    let R = (Y*Y.adjoint()).scale(1_f64/N as f64);
+    let CH = R.cholesky();
+    let mut phi = DVector::<f64>::zeros(L);
+    let phi: Vec<f64> = (0..L).map(|i| {
+        let f = |m: f64| {(-2.0*PI*Complex64::i()*d*(-0.5*PI + PI*(i as f64)/L as f64).sin()*m).exp()};
+        let a = DVector::from_fn(m, |i, _| f(i as f64));
+        if let Some(IR) = &CH {
+            1_f64/((a.adjoint()*IR.solve(&a))[(0,0)].re)
+        } else {
+            0.0
+        }
+        
+
+    }).collect();
+    return phi
 }
 
 

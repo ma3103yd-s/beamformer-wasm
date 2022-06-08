@@ -7,7 +7,7 @@ extern crate wasm_bindgen;
 use wasm_bindgen::prelude::*;
 mod utils;
 mod spectral;
-use spectral::{ULA, Signal, beamform};
+use spectral::{ULA, Signal, beamform, capon};
 use std::io::BufWriter;
 use std::fs::File;
 
@@ -114,5 +114,19 @@ mod test_beamformer {
 
 
     }
+    #[test]
+    fn test_capon() {
+        let f = File::create("capon.csv").unwrap();
+        let mut writer = BufWriter::new(f);
+        let sigAmp = [10.0, 20.0];
+        let doa = [25.0, 36.0];
+        let ula = ULA::new(50, 0.5);
+        let test_signal = Signal::new(ula, 64, &sigAmp, &doa).with_random_signal();
+        let phi = test_signal.capon(512);
+        for &val in phi.iter() {
+            writer.write(format!("{}, ", val).as_bytes());
+        }
+    }
+
+    }
     
-}

@@ -1,22 +1,83 @@
 import init, {ULA, Signal}  from "./pkg/beamformer_wasm.js";
 
+let last_index = 0;
+
 function coordToAngle(x, y) {
   let theta = Math.atan2(y, x);
   return theta;
 }
 
 function addNewSource(e, traces, signal) {
-  let x =  (e.offsetX-900);
-  let y = e.offsetY - 820;
-  let theta = Math.atan2(-y, x)*(180/Math.PI)-90;
-  let xx = x * (8/344);
-  let yy = y * (8/360);
-  let r = Math.sqrt(xx*xx + yy*yy);
+
+  //let xx = x * (8/344);
+  //let yy = y * (8/360);
+  //let r = Math.sqrt(xx*xx + yy*yy);
   if (r > 10) r = 10;
 
   signal.add_source(20.0, theta);
+  //traces.push(trace);
+  //console.log([x, y]);
+}
+
+function index_to_signal(signal, padd, index) {
+  let m = signal.n_sensor();
+  let phi = [];
+   switch (index) {
+    case 0: {
+      phi = signal.beamform(padd);
+      phi = phi.map((x) => x/m/m);
+      phi = phi.map((x) => Math.log(x));
+      break;
+    }
+    case 1: {
+      phi = signal.capon(padd);
+      phi = phi.map((x) => x);
+      phi = phi.map((x) => Math.log(x));
+    }
+  }
+  return phi; 
+}
+
+function onClick(e, PLOT, traces, signal) {
+  let names = ["Beamform", "Capon"];
+  let colors = ["rgb(27, 158, 119)", "rgb(231,41,138)"];
+
+  let n_source = signal.n_sources();
+  let index = 0;
+  for(let i=0; i<2; i++) {
+    if(document.getElementById(names[i]).checked) index = i;
+  }
+  traces.splice(-1, n_source);
+  let x =  (e.offsetX-700);
+  let y = e.offsetY - 780;
+  let theta = Math.atan2(-y, x)*(180/Math.PI)-90;
+  let coh = document.getElementById("Coherent").checked;
+  let pert = document.getElementById("Pert").value;
+
+  signal.set_coh(coh);
+  signal.set_pert(pert);
+  let amp = document.getElementById("amp").value;
+  signal.add_source(amp, theta);
+  console.log(signal);
+  //addNewSource(e, traces, signal);
+
+  let padd =  1024;
+  let phi1 = [];
+  let phi2 = [];
+  let ff = [];
+  for (let i = 0; i < padd; i++) {
+      ff[i] = -90.0 + (180.0/padd)*i;
+  }
+
+  phi1 = index_to_signal(signal, padd, index);
+
+
+
+  let r_max = Math.max(...phi1,...phi2);
+  /* Current Plotly.js version */
+  console.log(r_max);
   let trace = {
-    r: [r],
+    r: [1.3*r_max],
     theta: [theta],
     name: "signal",
     mode: 'marker',
@@ -29,39 +90,46 @@ function addNewSource(e, traces, signal) {
 
     type: "scatterpolar"
   };
-  traces.push(trace);
-  console.log([x, y]);
-}
+  traces.map((tr) => tr.r = [r_max*1.3]);
+  /*if (traces!=[]) {
 
-function onClick(e, PLOT, traces, signal) {
-  traces.pop();
-  addNewSource(e, traces, signal);
-  let padd =  1024;
-  let phi = signal.beamform(padd);
-  let ff = [];
-  for (let i = 0; i < padd; i++) {
-      ff[i] = -90.0 + (180.0/padd)*i;
-  }
-  phi = phi.map((x) => x/400.0);
-  phi = phi.map((x) => Math.log(x));
-  /* Current Plotly.js version */
-  //§console.log(ff);
+  }*/
+
+
+  
+  traces.push(trace);
 
   let trace1 = {
-      r: phi,
+      r: phi1,
       theta: ff,
       mode: 'lines',
-      name: 'Beamformer',
+      name: names[index],
       marker: {
-          color: "rgb(27, 158, 119)",
+          color: colors[index],
           line: {color: "white"},
           opacity: 0.7,
       },
       type: 'scatterpolar',
   };
+  if(last_index!=index) {
+    phi2 = index_to_signal(signal, padd, last_index);
+    let trace2 = {
+        r: phi2,
+        theta: ff,
+        mode: 'lines',
+        name: names[last_index],
+        marker: {
+            color: colors[last_index],
+            line: {color: "white"},
+            opacity: 0.7,
+        },
+        type: 'scatterpolar',
+    };
+    traces.push(trace2);
+  }
   let layout = {
     autosize: false,
-    width:1800,
+    width:1400,
     height: 900,
     showlegend: true,
     legend: {
@@ -76,6 +144,8 @@ function onClick(e, PLOT, traces, signal) {
     automargin: true,
   };
   traces.push(trace1);
+
+  last_index = index;
   Plotly.newPlot(PLOT, traces, layout);
 
 }
@@ -83,6 +153,9 @@ function onClick(e, PLOT, traces, signal) {
 init()
   .then(() => {
     const PLOT = document.getElementById('plot');
+    document.getElementById("Beamform").checked = true;
+    document.getElementById("amp").value = 20;
+
     const ula = ULA.new(20, 0.5);
     let traces = [];
     let signal = Signal.new(ula, 64, [], []);
@@ -93,7 +166,7 @@ init()
     }
     let layout = {
       autosize: false,
-      width:1800,
+      width:1400,
       height: 900,
       showlegend: true,
       legend: {
