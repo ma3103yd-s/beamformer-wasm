@@ -1,6 +1,6 @@
 import init, {ULA, Signal}  from "./pkg/beamformer_wasm.js";
 
-let source_index = [];
+let source_index = new Set();
 
 function index_to_signal(signal, padd, index) {
   let m = signal.n_sensor();
@@ -59,7 +59,7 @@ function onClick(e, PLOT, traces, signal) {
   signal.set_n_sensor(n_sensor);
   let amp = document.getElementById("amp").value;
   signal.add_source(amp, theta);
-  source_index.push(index);
+  source_index.add(index);
 
 
   // Sensor padding.
