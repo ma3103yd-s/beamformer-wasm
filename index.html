@@ -22,11 +22,17 @@
     <div id='plot' width="80%" height="100%"></div>
     <script src="index.js" type="module"></script>
     <form>
+      <h4>ULA</h4>
+      <label>Number of Sensors</label><br>
+      <label id="nsens"></label>
+      <input type="range" id="nsensor" name="nsensor" min=1 max=20>
       <h4>Method</h4>
       <input type="radio" id="Beamform" name="method" value="Beamform">
-      <label for="beamform">Beamform</label><br>
+      <label for="Beamform">Beamform</label><br>
       <input type="radio" id="Capon" name="method" value="Capon">
-      <label for="capon">Capon</label><br>
+      <label for="Capon">Capon</label><br>
+      <input type="radio" id="Apes" name="method" value="Apes">
+      <label for="Apes">APES</label><br>
       <h4>Disturbance</h4>
       <input type="checkbox" id="Coherent" name="noise" value="coh">
       <label for="Coherent">Coherent</label><br>

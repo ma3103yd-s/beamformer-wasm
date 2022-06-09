@@ -7,7 +7,7 @@ extern crate wasm_bindgen;
 use wasm_bindgen::prelude::*;
 mod utils;
 mod spectral;
-use spectral::{ULA, Signal, beamform, capon};
+use spectral::{ULA, Signal, beamform, capon, s_apes};
 use std::io::BufWriter;
 use std::fs::File;
 
@@ -47,24 +47,21 @@ mod test_beamformer {
         println!("Noise mean is {}", test_m);
         println!("Variance is {}", noise.variance().norm());
 
-        //let diff = test_var-var;
-        //assert!(diff < 2.0/10.0);
-        //assert!(m-test_m < 2.0/10.0);
     }
 
     #[test]
     fn test_signal() {
-        let f = File::create("test_values.txt").unwrap();
+        // test if generating sources works.
+        let f = File::create("y_values.csv").unwrap();
         let mut writer = BufWriter::new(f);
         let sigAmp = [10.0, 20.0];
         let doa = [25.0, 36.0];
         let ula = ULA::new(10, 0.5);
         let test_signal = Signal::new(ula, 64, &sigAmp, &doa).with_random_signal();
-        println!("Dimension of test_signal is {:?}", test_signal.get_data().shape());
+        //println!("Dimension of test_signal is {:?}", test_signal.get_data().shape());
         for row in test_signal.get_data().row_iter() {
             let mut index = 1;
             for &val in row.iter() {
-                println!("Col {}", index);
                 let real = val.re;
                 let c = val.im;
                 let str = format!("{} {},", real, c);
@@ -76,7 +73,7 @@ mod test_beamformer {
     }
     #[test]
     fn test_add_source() {
-        
+        // Test if adding a source works
         let f = File::create("test_values.txt").unwrap();
         let mut writer = BufWriter::new(f);
         let sigAmp = [];
@@ -101,6 +98,7 @@ mod test_beamformer {
     }
     #[test]
     fn test_beamform() {
+        // Writes data to file to compare with MATLAB implementation
         let f = File::create("beamform.csv").unwrap();
         let mut writer = BufWriter::new(f);
         let sigAmp = [10.0, 20.0];
@@ -116,6 +114,7 @@ mod test_beamformer {
     }
     #[test]
     fn test_capon() {
+        // Writes data to file to compare with MATLAB implementation
         let f = File::create("capon.csv").unwrap();
         let mut writer = BufWriter::new(f);
         let sigAmp = [10.0, 20.0];
@@ -123,6 +122,38 @@ mod test_beamformer {
         let ula = ULA::new(50, 0.5);
         let test_signal = Signal::new(ula, 64, &sigAmp, &doa).with_random_signal();
         let phi = test_signal.capon(512);
+        for &val in phi.iter() {
+            writer.write(format!("{}, ", val).as_bytes());
+        }
+    }
+    #[test]
+    fn test_sapes() {
+        // Writes useful data to files to compare with MATLAB implementation
+        let f = File::create("sapes.csv").unwrap();
+        let mut writer = BufWriter::new(f);
+        let sigAmp = [10.0, 20.0];
+        let doa = [25.0, 36.0];
+        let ula = ULA::new(10, 0.5);
+        let test_signal = Signal::new(ula, 64, &sigAmp, &doa).with_random_signal();
+        {
+            let f2 = File::create("yvalues.csv").unwrap();
+            let mut y_writer = BufWriter::new(f2);
+            for row in test_signal.get_data().row_iter() {
+                let mut index = 1;
+                for &val in row.iter() {
+                    let real = val.re;
+                    let c = val.im;
+                    let str = format!("{} {},", real, c);
+                    y_writer.write(str.as_bytes());
+                    index+=1;
+                }
+                y_writer.write("\n".as_bytes());
+            }
+        }
+
+        let phi = test_signal.s_apes(512);
+
+
         for &val in phi.iter() {
             writer.write(format!("{}, ", val).as_bytes());
         }

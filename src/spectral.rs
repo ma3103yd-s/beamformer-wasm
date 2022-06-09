@@ -1,6 +1,6 @@
-use nalgebra::{base::*, ComplexField};
+use nalgebra::{base::*, ComplexField, Complex};
 use rand::prelude::*;
-use num::complex::{Complex64, self};
+use num::{complex::{Complex64, self}, Zero, One};
 use std::{f64::consts::PI, ops::Mul};
 use num::zero;
 use wasm_bindgen::prelude::*;
@@ -10,7 +10,7 @@ use rand_distr::{StandardNormal, DistIter};
 
 use crate::utils;
 
-
+// Struct representing a ULA
 #[derive(Clone, Copy)]
 #[wasm_bindgen]
 pub struct ULA {
@@ -29,6 +29,7 @@ impl ULA {
         self.n_sensor
     }
 }
+// Struct representing some signal(s) impinging on an array of sensors
 #[wasm_bindgen(getter_with_clone)]
 pub struct Signal {
     ula: ULA,
@@ -43,6 +44,7 @@ pub struct Signal {
 
 
 impl Signal {
+    // Generates a normally distributed complex vector of size N
     pub fn generate_gaussian_vector(N: usize) -> RowDVector<Complex64> {
         let r_iter:DistIter<StandardNormal, ThreadRng, f64> = thread_rng().sample_iter(StandardNormal);
         let real_noise: RowDVector<f64>= RowDVector::from_iterator(N, r_iter.take(N));
@@ -54,6 +56,7 @@ impl Signal {
         return noise;
 
     }
+    // Generates a normally distributed complex matrix of size NxM
     pub fn generate_gaussian_matrix(N: usize, M: usize) -> DMatrix<Complex64> {
         return DMatrix::from_fn(N, M, |_, _| {
 
@@ -62,8 +65,6 @@ impl Signal {
             Complex64::new(real_noise, complex_noise).scale(1_f64/2_f64.sqrt())
         })  
     }
-
-
 
     pub fn get_data(&self) -> &DMatrix<Complex64> {
         &self.data
@@ -84,6 +85,7 @@ impl Signal {
 
 
 }
+// WASM bindings
 #[wasm_bindgen]
 impl Signal {
     pub fn new(ula: ULA, N: usize, amp: &[f64], doA: &[f64]) -> Signal {
@@ -120,7 +122,12 @@ impl Signal {
         self.pert = pert;
     }
 
+    pub fn set_n_sensor(&mut self, n_sensor: usize) {
+        self.ula.n_sensor = n_sensor;
+    }
+    // Adds a source with a random signal with amplitude amp and direction doa.
     pub fn add_source(&mut self, amp: f64, doa: f64) {
+        self.n_sources +=1;
         let m: usize = self.ula.n_sensor;
         let N: usize = self.samples;
         let nrows = self.doA.nrows();
@@ -176,7 +183,11 @@ impl Signal {
         self.n_sources
     }
 
-    pub fn with_random_signal(mut self) -> Signal {
+    pub fn clear(&mut self) {
+        self.data =  DMatrix::<Complex64>::zeros(0, 0);
+    }
+    // generates random signals from the given signal data;
+    pub fn random_signal(&mut self) {
         let m: usize = self.ula.n_sensor;
         let N: usize = self.samples;
         let mut signal = DMatrix::zeros(m, N);
@@ -184,10 +195,12 @@ impl Signal {
         for k in 0..self.n_sources {
             let exp_comp = |x: usize| (-PI*Complex64::i()*(self.doA[k]*PI/180_f64).sin()*(x as f64)).exp();
             let mut A: DVector<Complex64> = DVector::from_iterator(m, (0..m).map(|m| exp_comp(m)));
+            // Perturbation disturbance
             if self.pert > 0_f64 {
                 A = A+(Signal::generate_gaussian_vector(m).transpose()).scale(self.pert.sqrt());
 
             }
+            // Coherence disturbance
             if self.coh {
                 let r_r: f64 = thread_rng().sample(StandardNormal);
                 let r_c: f64 = thread_rng().sample(StandardNormal);
@@ -204,10 +217,15 @@ impl Signal {
         let n = Signal::generate_gaussian_matrix(m, N).scale(2.0);
         signal = signal+n;
         self.data = signal;
+       
+    }
+    // Builder method
+    pub fn with_random_signal(mut self) -> Signal {
+        self.random_signal();
         self
 
     }
-
+    // Classical beamformer
     pub fn beamform(&self, L: usize) -> Vec<f64> {
         if !self.data.is_empty() {
             return super::beamform(&self.data, L, self.ula.d)
@@ -224,10 +242,18 @@ impl Signal {
             Vec::new()
         }
     }
+
+    pub fn s_apes(&self, L: usize) -> Vec<f64> {
+        if !self.data.is_empty() {
+            return super::s_apes(&self.data, L);
+        } else {
+            Vec::new()
+        }       
+    }
 }
 
 
-
+// Classical beamformer
 pub fn beamform(Y: &DMatrix<Complex64>, L: usize, d: f64) -> Vec<f64> {
     let m = Y.nrows();
     let N = Y.ncols();
@@ -246,7 +272,8 @@ pub fn beamform(Y: &DMatrix<Complex64>, L: usize, d: f64) -> Vec<f64> {
 
     //let R = Y.gemm_ad(alpha, &Y, &Y, num::zero());
 }
-
+// Capon estimate. Implementation referenced from "Spectral Analysis of Signals" by 
+// P.Stoica and R.Moses
 pub fn capon(Y: &DMatrix<Complex64>, L: usize, d: f64) -> Vec<f64> {
     let m: usize = Y.nrows();
     let N: usize = Y.ncols();
@@ -265,6 +292,53 @@ pub fn capon(Y: &DMatrix<Complex64>, L: usize, d: f64) -> Vec<f64> {
 
     }).collect();
     return phi
+}
+
+/*
+ A. Jakobsson and P. Stoica, "On the Forward-Backward Spatial APES",
+% Signal Processing, Vol. 86, pp. 710-715, 2006.
+*/
+pub fn s_apes(Y: &DMatrix<Complex64>, L: usize) -> Vec<f64> {
+    let m: usize = Y.nrows();
+    let N: usize = Y.ncols();
+    //println!("m  and n is {}, {}", m, N);
+    let _J = DMatrix::<Complex64>::from_fn(m-1, m-1, |i, j| {
+        if m-2-j == i {
+            Complex64::new(1_f64, 0_f64)
+        } else {
+            Complex64::zero()
+        }
+    });
+    let Rfb = (Y.index((0..m-1, ..))*Y.index((0..m-1, ..)).adjoint()
+        + Y.index((1..m, ..))*Y.index((1..m, ..)).adjoint()).scale(1.0/(N as f64*2.0));
+    let Rfb = (&Rfb + &_J*Rfb.transpose()*&_J).scale(0.5);
+
+    let phi: Vec<f64> = (0..L).map(|i| {
+        let omega_s = PI*(-0.5*PI + PI*(i as f64)/L as f64).sin();
+        let mut Gf = DMatrix::<Complex64>::zeros(m-1,m-1);
+        let mut Gb = Gf.clone();
+        for t in 0..N {
+            let gk = Y.index((0..m-1, t)) + Y.index((1..m, t)) * (Complex64::i()*omega_s).exp();
+            let Yud_1 = DVector::<Complex64>::from_iterator(m-1, Y.index((0..m-1, t)).iter().cloned().rev());
+            let Yud_2 = DVector::<Complex64>::from_iterator(m-1, Y.index((1..m, t)).iter().cloned().rev());
+            let gt = Yud_2.conjugate() + Yud_1.conjugate()*(Complex64::i()*omega_s).exp();
+
+            Gf.gerc(Complex64::one(), &gk, &gk, Complex64::one());
+
+            Gb.gerc(Complex64::one(), &gt, &gt, Complex64::one());
+        }
+        Gb.scale_mut(1.0/(N as f64*4.0));
+        Gf.scale_mut(1.0/(N as f64*4.0));
+        let a1 = DVector::from_iterator(m-1, (0..m-1).
+        map(|x| (-1.0*Complex64::i()*omega_s*x as f64).exp()));
+
+        let iQ = (&Rfb-Gb.scale(0.5)-Gf.scale(0.5)).lu().try_inverse().unwrap();
+        let iQa = &iQ*&a1;
+        let hfb = &iQa*(1.0/(a1.adjoint()*&iQa)[0]);
+        (hfb.adjoint()*Gf*hfb)[0].abs()
+
+    }).collect();
+    return phi;
 }
 
 
